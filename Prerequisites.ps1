@@ -45,7 +45,6 @@ function CheckPowershellModulesAvailability {
 
     return $true
    
-
 }
 
 # Title
@@ -169,7 +168,7 @@ function SetPowershellExecutionPolicy {
 
     #Exits if it is not granted
     if ($UserAgreement -notin @('Y','y')) {
-        Write-Host "Aborting MD365Collector. Unrestricted execution policy is reuired for the successful execution of the tool." -ForegroundColor Yellow
+        Write-Host "Aborting MD365Collector. Unrestricted execution policy is required for the successful execution of the tool." -ForegroundColor Yellow
         return $false
     }
 
@@ -240,4 +239,26 @@ function AuthenticateInExchangeOnline {
     }
 
     return $true
+}
+
+# Title
+# CheckPowershellIse
+#
+# Params
+# None
+#
+# Description
+# Checks if script is being run on powershell ise
+#
+# Return
+# Boolean. True if it is run on ISE. Else, false.
+# 
+function CheckPowershellIse {
+
+    if ($PSISE){
+         Write-Host "Do not" -ForegroundColor Yellow
+        return $true
+    }
+
+    return $false
 }

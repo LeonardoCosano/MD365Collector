@@ -4,19 +4,19 @@ Import-Module "$PSScriptRoot\Prerequisites.ps1" -Force
 # 1. Check execution prerequisites
 ## 1.1. Checks if powershell execution policy
 if (-not (CheckPowershellExecutionPolicy)){
-    $status = SetPowershellExecutionPolicy
+    $success = SetPowershellExecutionPolicy
 }
 
-if (-not ($status)){
+if ($success = $false){
     exit 1
 }
 
 ## 1.2. Checks if powershell modules required by the tool are installed on system
 if (-not (CheckPowershellModulesAvailability)){
-    $InstallationStatus = InstallRequiredPowershellModules
+    $InstallationSuccess = InstallRequiredPowershellModules
 }
 
-if (-not ($InstallationStatus)){
+if ($InstallationSuccess = $false){
     exit 1
 }
 
@@ -25,7 +25,12 @@ if (-not (ImportRequiredModules)){
     exit 1
 }
 
-## 1.4. Authenticate
+## 1.4 Check powershell ISE, which does not allow starting authentication process
+if (CheckPowershellIse){
+    exit 1
+}
+
+## 1.5. Authenticate
 if (-not (AuthenticateInExchangeOnline)){
     exit 1
 }
