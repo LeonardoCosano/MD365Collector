@@ -5,6 +5,7 @@
 # Variable containing powershell module names which are required by MD365Collector to work.
 # 
 $script:powershellModulesRequiredByTool = @(
+    'Microsoft.PowerShell.Utility',
     'ExchangeOnlineManagement'
     #'Az'
 )
@@ -215,7 +216,7 @@ function ImportRequiredModules {
 }
 
 # Title
-# AuthenticateInExchangeOnline
+# AuthenticateAsUserInExchangeOnline
 #
 # Params
 # None
@@ -226,7 +227,7 @@ function ImportRequiredModules {
 # Return
 # Boolean. True if authentication is success. Else, false.
 # 
-function AuthenticateInExchangeOnline {
+function AuthenticateAsUserInExchangeOnline {
 
     $UPN = Read-Host "Introduce UserPrincipalName of the account that will be used to authenticate"
 
