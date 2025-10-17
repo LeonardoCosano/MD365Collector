@@ -50,7 +50,7 @@ function IsEnvironmentReadyForMD365Collector {
     }
     
     ## 1.3 Check if tool is being run on powershell ISE.
-    if (isPowershellIse){
+    if (isPowershellIse -silent $false){
         $IsEnvironmentReady = $false
     }
 
@@ -91,7 +91,7 @@ function SetEnvironmentReadyForMD365Collector {
     }
 
     ## 1.3 Check if tool is being run on powershell ISE, environment which does not allow ExchangeOnline authentication process to be completed properly
-    $wasPowershellISEDetected = CheckPowershellIse
+    $wasPowershellISEDetected = isPowershellIse -silent $true
     if ($wasPowershellISEDetected){
         $IsEnvironmentReady = $false
     }
