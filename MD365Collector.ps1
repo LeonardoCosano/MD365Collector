@@ -12,7 +12,7 @@
 
   Script: MD365Collector.ps1
   Author: Leonardo Cosano
-  Purpose: Features to ease BEC investigation process on Microsoft Defender for office 365.
+  Purpose: MD365Collector tool is intended to ease BEC investigation on Microsoft Defender for office environment. In this script file you will find generic predefined ways to use it, from initial steps to check prerequisites and authentication to generic evidence collection usage.
   Date: 2025.10.16
 
 #>
@@ -22,56 +22,101 @@ Import-Module "$PSScriptRoot\Prerequisites.ps1" -Force
 Import-Module "$PSScriptRoot\UnifiedAuditLog.ps1" -Force
 
 # Title
-# IsMD365CollectorReady
+# IsEnvironmentReadyForMD365Collector
 #
 # Params
 # None
 #
 # Description
-# Checks if the environment and user executing the tool satisfy prerequisites to execute the tool
+# This functions is intended to be run at the very begining of MD365Collector tool usage.
+# It is though to check if user's environment is ready for executing the tool as it satisfies prerequisites (execution policy, powershell modules installed, IDE).
+# It wont make any change to the user's environment.
 #
 # Return
 # Boolean. True if machine satifies all prerequisites, else false.
 # 
-function IsMD365CollectorReady {
+function IsEnvironmentReadyForMD365Collector {
 
-    ## 1.1. Checks if powershell execution policy
-    if (-not (CheckPowershellExecutionPolicy)){
-        $success = SetPowershellExecutionPolicy
-        if ($success = $false){
-            return $false
-            exit 1
-        }
+    $IsEnvironmentReady = $true
+
+    ## 1.1. Checks if powershell execution policy is permissive enough.
+    if (-not (isPowershellExecutionPolicyOk)){
+        $IsEnvironmentReady = $false
+    }
+
+    ## 1.2. Checks if powershell modules required by the tool are installed on system.
+    if (-not (arePowershellModulesAvailable)){
+        $IsEnvironmentReady = $false
+    }
+    
+    ## 1.3 Check if tool is being run on powershell ISE.
+    if (isPowershellIse){
+        $IsEnvironmentReady = $false
+    }
+
+    if (-not ($IsEnvironmentReady)){
+        Write-Host 'Environment does not satisfy all requirements, please fix errors described below.' -ForegroundColor DarkRed 
+    }
+    else{
+        Write-Host 'Environment satisfy all requirements. You can now use the tool.' -ForegroundColor DarkGreen 
+    }
+}
+
+# Title
+# SetEnvironmentReadyForMD365Collector
+#
+# Params
+# None
+#
+# Description
+# It loads required powershell modules used by the tool and authenticates against exchange online service.
+#
+# Return
+# Boolean. True if machine satifies all prerequisites, else false.
+# 
+function SetEnvironmentReadyForMD365Collector {
+
+    $IsEnvironmentReady = $true
+
+    ## 1.1. Set proper powershell execution policy
+    $wasPolicyChanged = SetPowershellExecutionPolicy
+    if (-not ($wasPolicyChanged)){
+        $IsEnvironmentReady = $false
     }
 
     ## 1.2. Checks if powershell modules required by the tool are installed on system
-    if (-not (CheckPowershellModulesAvailability)){
-        $InstallationSuccess = InstallRequiredPowershellModules
-        if ($InstallationSuccess = $false){
-            return $false
-            exit 1
-        }
+    $werePowershellModulesInstalled = InstallRequiredPowershellModules
+    if (-not ($werePowershellModulesInstalled)){
+        $IsEnvironmentReady = $false
     }
 
     ## 1.3 Check if tool is being run on powershell ISE, environment which does not allow ExchangeOnline authentication process to be completed properly
-    if (CheckPowershellIse){
-        return $false
-        exit 1
+    $wasPowershellISEDetected = CheckPowershellIse
+    if ($wasPowershellISEDetected){
+        $IsEnvironmentReady = $false
     }
 
-    ## 1.4. Load required modules
-    if (-not (ImportRequiredModules)){
-        return $false
-        exit 1
+    ## 1.4 Load required modules
+    $werePowershellModulesImported = ImportRequiredModules
+    if (-not ($werePowershellModulesImported)){
+        $IsEnvironmentReady = $false
     }
 
-    ## ToDo Authenticate as app
+    ## ToDo offer authentication as an app
     ## 1.5. Authenticate
-    if (-not (AuthenticateAsUserInExchangeOnline)){
-        exit 1
+    $wasAuthenticationSuccess = AuthenticateAsUserInExchangeOnline
+    if (-not ($wasAuthenticationSuccess)){
+        $IsEnvironmentReady = $false
     }
 
-    ## ToDo Check if user account has permissions enough   
+    ## ToDo Check if user account has permissions enough
+    if (-not ($IsEnvironmentReady)){
+        Write-Host 'Environment is not ready, please fix errors described below.' -ForegroundColor DarkRed 
+    }
+    else{
+        Write-Host 'Environment is ready. You can now start using the tool.' -ForegroundColor DarkGreen 
+    }
+      
 }
 
 # Title
@@ -113,6 +158,4 @@ function StartCollection {
     # 3. Collect AADSignInLogs
     # 4. Collect AADAuditLogs 
     # 5. Collect Exchange message traces
-
-
 }
