@@ -12,7 +12,7 @@
 
   Script: MD365Collector.ps1
   Author: Leonardo Cosano
-  Purpose: I want to automate BEC investigation process.
+  Purpose: Features to ease BEC investigation process on Microsoft Defender for office 365.
   Date: 2025.10.16
 
 #>
