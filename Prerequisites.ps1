@@ -29,144 +29,89 @@ $script:powershellModulesRequiredByTool = @(
     #'Az'
 )
 
-
 # Title
-# CheckPowershellModulesAvailability
+# isPowershellExecutionPolicyOk
 #
 # Params
 # None
 #
 # Description
-# Checks if the machine executing MD365Collector has required powershell modules installed
-#
-# Return
-# Boolean. True if machine has all required powershell modules installed, else false.
-# 
-function CheckPowershellModulesAvailability {
-
-    # Iterate over list of required modules
-    $allModulesInstalled = $true
-    foreach ($module in $powershellModulesRequiredByTool) {
-
-        #check if module is installed
-        $isModuleInstalled = Get-Module -ListAvailable -Name $module
-
-        # If just one is not installed, then we cant stop
-        if (-not $isModuleInstalled){
-            $allModulesInstalled = $false
-            break
-        }
-    }
-    
-    # Return values
-    if (-not $allModulesInstalled)  {
-        return $false
-    }
-
-    return $true
-   
-}
-
-# Title
-# InstallRequiredPowershellModules
-#
-# Params
-# None
-#
-# Description
-# If user agrees, function installs powershell modules required by MD365Collector
-#
-# Return
-# boolean. True if success, else false.
-#
-function InstallRequiredPowershellModules {
-
-    # Requests user agreement
-    $UserAgreement = Read-Host "Do you agree to install powershell modules which are required by the tool? (Y/n)"
-    if ($UserAgreement -notin @('Y','y')) {
-        Write-Host "Aborting MD365Collector. Install following modules to successfuly execute:" -ForegroundColor 
-    }
-
-    # Loops over required powershell modules
-    foreach ($module in $powershellModulesRequiredByTool) {
-        
-        #check if module is installed
-        $isModuleInstalled = Get-Module -ListAvailable -Name $module
-
-        #if it is not installed, tries installation
-        if (-not $isModuleInstalled){
-            Write-Host "Module <$module> is missing." -ForegroundColor Yellow
-            $installationStatus = InstallModuleIfUserAgrees -Modulename $module -Agreement $UserAgreement
-
-            #if installation fails, tool exits
-            if ($installationStatus == $false) {
-                Write-Host "Module <$module> was not installed but it is required." -ForegroundColor Red
-                Write-Host "Install module <$module> to continue using MD365Collector" -ForegroundColor Red
-                return $false
-            }         
-        }
-    }
-
-    return $true
-
-}
-
-# Title
-# InstallModuleIfUserAgrees
-#
-# Params
-# ModuleName. String. The name of the module to install.
-# Agreement. String (Y/y/N/n). The value of the user agreement
-#
-# Description
-# If user agrees, function installs powershell modules required by MD365Collector. Else, does nothing.
-#
-# Return
-# boolean. True if installation success, else false.
-#
-function InstallModuleIfUserAgrees {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$ModuleName,
-
-        [Parameter(Mandatory=$true)]
-        [string]$Agreement
-    )
-
-    # If user did not grant permissions, then installation is cancelled
-    if ($Agreement -notin @('Y','y')){
-        return $false
-    }
-
-    # Attempts installation
-    try {
-        Install-Module -Name $ModuleName -Scope CurrentUser -Force -AllowClobber
-    }
-    catch {
-        return $false
-    }
-
-    return $true
-
-}
-
-# Title
-# CheckPowershellExecutionPolicy
-#
-# Params
-# None
-#
-# Description
-# Checks if the powershell execution policy is unrestricted or bypass
+# Checks if the powershell execution policy is permissive enough for tool execution (unrestricted or bypass) and suggests fixes if it is not.
 #
 # Return
 # Boolean. True if powershell execution policy is unrestricted or bypass. Else, false.
 # 
-function CheckPowershellExecutionPolicy {
+function isPowershellExecutionPolicyOk {
+
+    Write-Host "Checking if powershell execution policy is set to, at least, unrestricted." -ForegroundColor DarkCyan
+
     $policy = Get-ExecutionPolicy -Scope CurrentUser
     if ($policy -notin @('Unrestricted ','Bypass')){
+        Write-Host "You should set 'Unrestricted' powershell execution policy or permissive, not $policy" -ForegroundColor DarkYellow
         return $false
     }
+
+    return $true
+}
+
+
+# Title
+# arePowershellModulesAvailable
+#
+# Params
+# None
+#
+# Description
+# Checks if the machine executing MD365Collector has required powershell modules installed and suggests fixes if it is not.
+#
+# Return
+# Boolean. True if machine has all required powershell modules installed, else false.
+# 
+function arePowershellModulesAvailable {
+
+    Write-Host "Checking if all required powershell modules are installed on the system..." -ForegroundColor DarkCyan
+    $allModulesInstalled = $true
+
+    # Iterate over list of required modules
+    foreach ($module in $powershellModulesRequiredByTool) {
+
+        #check if module is installed
+        $isModuleInstalled = Get-Module -ListAvailable -Name $module
+
+        if (-not $isModuleInstalled){
+            Write-Host "You should install powershell module '$module'" -ForegroundColor DarkYellow
+            $allModulesInstalled = $false
+        }
+
+    }
+    
+    # Return values
+    return $allModulesInstalled
+   
+}
+
+# Title
+# isPowershellIse
+#
+# Params
+# None
+#
+# Description
+# Checks if script is being run on powershell ise and suggests fixes if it is not.
+#
+# Return
+# Boolean. True if it is run on ISE. Else, false.
+# 
+function isPowershellIse {
+
+    Write-Host "Checking if tool is being run on powershell ise..." -ForegroundColor DarkCyan
+
+    if ($PSISE){
+        Write-Host "You should not run tool from powershell ise" -ForegroundColor DarkYellow
+        return $true
+    }
+
+    return $false
 }
 
 # Title
@@ -183,26 +128,59 @@ function CheckPowershellExecutionPolicy {
 # 
 function SetPowershellExecutionPolicy {
 
-    # Requests user agreement
-    $UserAgreement = Read-Host "Do you agree to set powershell execution policy to unrestricted? (Y/n)"
-
-    #Exits if it is not granted
-    if ($UserAgreement -notin @('Y','y')) {
-        Write-Host "Aborting MD365Collector. Unrestricted execution policy is required for the successful execution of the tool." -ForegroundColor Yellow
-        return $false
-    }
-
     # Attempts to set powershell execution policy
     try{
         Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Unrestricted -Force
     }
     catch{
-        Write-Host "Set-executionPolicy failed." -ForegroundColor Red
+        Write-Host "Set-executionPolicy failed with error: $a_.Exception.Message" -ForegroundColor DarkRed
         return $false
     }
 
     return $true
 }
+
+# Title
+# InstallRequiredPowershellModules
+#
+# Params
+# None
+#
+# Description
+# If user agrees, function installs powershell modules required by MD365Collector
+#
+# Return
+# boolean. True if success, else false.
+#
+function InstallRequiredPowershellModules {
+
+    # Loops over required powershell modules
+    foreach ($module in $powershellModulesRequiredByTool) {
+        
+        #check if module is installed
+        $isModuleInstalled = Get-Module -ListAvailable -Name $module
+
+        #if it is not installed, attempts installation
+        if (-not $isModuleInstalled){
+
+            try {
+                Install-Module -Name $ModuleName -Scope CurrentUser -Force -AllowClobber
+            }
+            catch {
+                Write-Host "Module <$module> installation failed with error: $a_.Exception.Message" -ForegroundColor DarkRed
+                return $false
+            }
+
+        }
+
+    }
+
+    return $true
+}
+
+
+
+
 
 # Title
 # ImportRequiredModules
@@ -226,7 +204,7 @@ function ImportRequiredModules {
             Import-Module $module   
         }
         catch{
-            Write-Host "Import-Module '$module' failed." -ForegroundColor Red
+            Write-Host "Import-Module '$module' failed." -ForegroundColor DarkRed
             return $false
         }
     }
@@ -254,31 +232,10 @@ function AuthenticateAsUserInExchangeOnline {
         Connect-ExchangeOnline -UserPrincipalName $UPN
     }
     catch{
-        Write-Host "Authentication failed." -ForegroundColor Red
+        Write-Host "Authentication failed." -ForegroundColor DarkRed
         return $false
     }
 
     return $true
 }
 
-# Title
-# CheckPowershellIse
-#
-# Params
-# None
-#
-# Description
-# Checks if script is being run on powershell ise
-#
-# Return
-# Boolean. True if it is run on ISE. Else, false.
-# 
-function CheckPowershellIse {
-
-    if ($PSISE){
-         Write-Host "Do not" -ForegroundColor Yellow
-        return $true
-    }
-
-    return $false
-}
