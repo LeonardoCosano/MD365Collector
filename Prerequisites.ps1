@@ -46,7 +46,7 @@ function isPowershellExecutionPolicyOk {
     Write-Host "Checking if powershell execution policy is set to, at least, unrestricted." -ForegroundColor DarkCyan
 
     $policy = Get-ExecutionPolicy -Scope CurrentUser
-    if ($policy -notin @('Unrestricted ','Bypass')){
+    if ($policy -notin @('Unrestricted','Bypass')){
         Write-Host "You should set 'Unrestricted' powershell execution policy or permissive, not $policy" -ForegroundColor DarkYellow
         return $false
     }
@@ -94,7 +94,7 @@ function arePowershellModulesAvailable {
 # isPowershellIse
 #
 # Params
-# None
+# silent. boolean. indicates if function should print (false) or not (true).
 #
 # Description
 # Checks if script is being run on powershell ise and suggests fixes if it is not.
@@ -103,8 +103,14 @@ function arePowershellModulesAvailable {
 # Boolean. True if it is run on ISE. Else, false.
 # 
 function isPowershellIse {
+    param(
+        [Parameter(Mandatory=$true)]
+        [bool]$silent
+    )
 
-    Write-Host "Checking if tool is being run on powershell ise..." -ForegroundColor DarkCyan
+    if (-not ($silent)){
+        Write-Host "Checking if tool is being run on powershell ise..." -ForegroundColor DarkCyan
+    }
 
     if ($PSISE){
         Write-Host "You should not run tool from powershell ise" -ForegroundColor DarkYellow
@@ -179,9 +185,6 @@ function InstallRequiredPowershellModules {
 }
 
 
-
-
-
 # Title
 # ImportRequiredModules
 #
@@ -226,10 +229,8 @@ function ImportRequiredModules {
 # 
 function AuthenticateAsUserInExchangeOnline {
 
-    $UPN = Read-Host "Introduce UserPrincipalName of the account that will be used to authenticate"
-
     try{
-        Connect-ExchangeOnline -UserPrincipalName $UPN
+        Connect-ExchangeOnline
     }
     catch{
         Write-Host "Authentication failed." -ForegroundColor DarkRed
