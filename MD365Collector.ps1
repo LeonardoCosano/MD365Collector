@@ -12,7 +12,7 @@
 
   Script: MD365Collector.ps1
   Author: Leonardo Cosano
-  Purpose: MD365Collector tool is intended to ease BEC investigation on Microsoft Defender for office environment. In this script file you will find generic predefined ways to use it, from initial steps to check prerequisites and authentication to generic evidence collection usage.
+  Purpose: MD365Collector tool is intended to ease BEC investigation on Microsoft Defender for office environment. This script file provides functions that act as a wrapper of the functions in the tool so you have a generic predefined way to use it, from initial steps to check prerequisites and authentication to desired evidence collection.
   Date: 2025.10.16
 
 #>
@@ -124,8 +124,8 @@ function SetEnvironmentReadyForMD365Collector {
 #
 # Params
 # user. mandatory string. comma separated list of userprincipalnames of the accounts to be collected.
-# start. optional datetime. beginning of the timeframe to be collected.
-# end. optional datetime. beginning of the timefram to be collected.
+# start. mandatory datetime. beginning of the timeframe to be collected.
+# end. mandatory datetime. beginning of the timefram to be collected.
 #
 # Description
 # Checks if the machine executing MD365Collector satifies prerequisites to execute the tool
@@ -138,19 +138,19 @@ function StartCollection {
         [Parameter(Mandatory=$true)]
         [string]$user,
 
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory=$true)]
         [DateTime]$start,
 
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory=$true)]
         [DateTime]$end
     )
 
+    $IsCollectionComplete = $true
 
     # 1. Collect Unified Audit Logs
-    if (GetAuditLogs -user $user -start $start -end $end){
-        Write-Host "Saving MD365-AuditLogs into outputs folder as '$((Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")).$user.MD365-AuditLogs'" -ForegroundColor DarkCyan
-    } else {
-        Write-Host "Microsoft Defender Audit Logs collection failed" -ForegroundColor DarkRed
+    $wasAuditLogSearchSuccess = GetAuditLogs -user $user -start $start -end $end
+    if (-not ($wasAuditLogSearchSuccess)){
+        $IsCollectionComplete = $false
     }
 
     # ToDo
@@ -158,4 +158,13 @@ function StartCollection {
     # 3. Collect AADSignInLogs
     # 4. Collect AADAuditLogs 
     # 5. Collect Exchange message traces
+
+    ## 
+    if (-not ($IsCollectionComplete)){
+        Write-Host 'Automated collection didnt complete successfully, please see uncomplete searches below.' -ForegroundColor DarkRed 
+    }
+    else{
+        Write-Host 'Automated collection completed successfully. You can now check results on outputs folder.' -ForegroundColor DarkGreen 
+    }
+
 }
