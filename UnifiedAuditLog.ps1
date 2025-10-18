@@ -18,44 +18,43 @@
 #>
 
 # Title
-# checkUTCDate
+# isDateUTC
 #
 # Params
 # Date. String. Date value in unkown format
 #
 # Description
-# It confirms wether variable is datetime in format UTC+0.
+# It confirms wether variable is datetime in format UTC.
 #
 # Return
-# Boolean. True if date is UTC+0. Else, false.
+# Boolean. True if date is UTC. Else, false.
 # 
-function checkUTCDate {
+function isDateUTC {
     param(
         [Parameter(Mandatory=$true)]
         [DateTime]$Date
     )
 
-    # Checks wether parameter is in a valid date variable
+    # Checks whether parameter is in a valid date variable
     if (-not ($date -is [DateTime])) {
-        Write-Host "Date parameter is not a valid datetime variable" -ForegroundColor Red
+        Write-Host "Date parameter is not a valid datetime variable" -ForegroundColor DarkRed
         return $false 
     } 
 
     # Catches exceptions due to access Kind property of a date variable.
     try{
-        $date.Kind
+        # Checks wether date variable is in UTC
+        $dateKind = $date.Kind
+        if ($dateKind -eq [System.DateTimeKind]::Utc -or $dateKind -eq [System.DateTimeKind]::Local) {
+            return $true
+        }
     }
     catch{
-        Write-Host "Error while inspecting date parameter date format kind property $a_.Exception.Message" -ForegroundColor Red  
+        Write-Host "Error while inspecting date parameter date format kind property $a_.Exception.Message" -ForegroundColor DarkRed  
         return $false
     }
 
-    # Checks wether date variable is in UTC
-    if ($date.Kind -eq [System.DateTimeKind]::Utc) {
-        return $true
-    }
-
-    # If date variable is not UTC+0, return false. 
+    # If date variable is not UTC, return false. 
     return $false
 
 }
@@ -70,7 +69,7 @@ function checkUTCDate {
 # EndDate. String. Optional. Ending date from the log investigation timeframe
 #
 # Description
-# It searches audit log events from the username indicated.
+# It searches audit log events from the username indicated during the timeframe established. It also saves output into a output folder
 #
 # Return
 # Boolean. True if audit logs were successfully retrieved. Else, false.
@@ -88,7 +87,8 @@ function GetAuditLogs {
         [DateTime]$end
     )
 
-    # If custom values for date parameters are not provided, set a default value
+    # 1. Handle parameters
+    ## 1.1. If custom values for date parameters are not provided, set a default value
     if (-not ($PSBoundParameters.ContainsKey('end')) -or -not ($end)) {
         $end = (Get-Date).ToUniversalTime()
     }        
@@ -96,25 +96,39 @@ function GetAuditLogs {
         $start = $end.AddDays(-1)
     }
 
-    # If date parameteres are provided (left statement of the and condition) and its format is wrong (right statement of and condition) set correct value
-    if ($PSBoundParameters.ContainsKey('end') -and -not (checkUTCDate -date $end)){
-        Write-Host "Your end date parameter is being treated as UTC your Localtime" -ForegroundColor Yellow
+    ## 1.2.  If date parameteres are provided (left statement of the and condition) and its format is wrong (right statement of and condition) set correct value
+    if ($PSBoundParameters.ContainsKey('end') -and -not (isDateUTC -Date $end)){
         $end = $end.ToUniversalTime()
+        Write-Host "Your end date parameter value has been adapted to UTC+0: $end" -ForegroundColor DarkYellow
+
     }
-    if ($PSBoundParameters.ContainsKey('start') -and -not (checkUTCDate -date $start)){
-        Write-Host "Your start date parameter is being treated as UTC your Localtime" -ForegroundColor Yellow
-        $start = $start.ToUniversalTime()      
+    if ($PSBoundParameters.ContainsKey('start') -and -not (isDateUTC -Date $start)){
+        $start = $start.ToUniversalTime()    
+        Write-Host "Your start date parameter value has been adapted to UTC+0: $start" -ForegroundColor DarkYellow
     }
 
+    # 2. Start the search
+    Write-Host "Searching audit logs for $user since $start to $end" -ForegroundColor DarkCyan
 
-    #Ãttempt to search AuditLogs
     try{
-        Search-UnifiedAuditLog -EndDate $end -StartDate $start -UserIds $user    
+        # Create a uniqueIdentifier, the epoch time
+        $sessionID = [int][double]((New-TimeSpan -Start (Get-Date "1970-01-01T00:00:00Z") -End (Get-Date).ToUniversalTime()).TotalSeconds)
+        $results = Search-UnifiedAuditLog -EndDate $end -StartDate $start -UserIds $user -HighCompleteness -ResultSize 5000 -SessionCommand ReturnLargeSet -SessionId $sessionID -errorAction stop
     }
     catch{
-        Write-Host "Error while Search-UnifiedAuditLog execution: $_.Exception.Message" -ForegroundColor Red
+        Write-Host "Error while Search-UnifiedAuditLog execution: $_.Exception.Message" -ForegroundColor DarkRed
         return $false          
     }
+
+    # 3. Store results into outputs folder
+    ## 3.1. Get outputs folder
+    $outputsFolderPath = "outputs/" + (Get-Date).ToString("yyyy.MM.dd")+"-"+$user
+    if (-not (Test-Path $outputsFolderPath)) {
+        New-Item -Path $outputsFolderPath -ItemType Directory | Out-Null
+    }
+    ## 3.2. Save results
+    $results | Select-Object * | Export-Csv "$outputsFolderPath\O365AuditLogs.csv" -NoTypeInformation
+    Write-Host "AuditLog search ended successfully. Saving at $outputsFolderPath\O365AuditLogs.csv" -ForegroundColor DarkGreen
 
     return $true   
 }
