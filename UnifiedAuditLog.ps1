@@ -59,6 +59,60 @@ function isDateUTC {
 
 }
 
+# Title
+# isOutputFolderCreated
+#
+# Params
+# path. String. the path of the folder to be checked.
+#
+# Description
+# It will search if a folder exists.
+#
+# Return
+# Boolean. True if folder already exists. Else, false.
+# 
+function isOutputFolderCreated {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$path
+    )
+
+    if (-not (Test-Path $path)) {
+        return $false
+    }
+
+    return $true
+}
+
+# Title
+# createOutputFolder
+#
+# Params
+# path. String. the path of the folder to be created.
+#
+# Description
+# It will create a folder.
+#
+# Return
+# string. If folder is successfully created, true. Else, false.
+# 
+function createOutputFolder {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$path
+    )
+
+    try{
+        New-Item -Path $path -ItemType Directory | Out-Null
+    }
+    catch{
+        return $false
+    }
+
+    return $true
+}
+
+
 
 # Title
 # GetAuditLogs
@@ -122,13 +176,78 @@ function GetAuditLogs {
 
     # 3. Store results into outputs folder
     ## 3.1. Get outputs folder
-    $outputsFolderPath = "outputs/" + (Get-Date).ToString("yyyy.MM.dd")+"-"+$user
-    if (-not (Test-Path $outputsFolderPath)) {
-        New-Item -Path $outputsFolderPath -ItemType Directory | Out-Null
+    $outputsFolderPath = "outputs/" + (Get-Date).ToString("yyyy.MM.dd") + "-" + $user
+    if (-not (isOutputFolderCreated -path $outputsFolderPath)){
+        createOutputFolder -path $outputsFolderPath
     }
+
     ## 3.2. Save results
-    $results | Select-Object * | Export-Csv "$outputsFolderPath\O365AuditLogs.csv" -NoTypeInformation
+    $results | Select-Object CreationDate, ResultIndex, UserIds, RecordType, Operations, AuditData  | Export-Csv "$outputsFolderPath\O365AuditLogs.csv" -NoTypeInformation
     Write-Host "AuditLog search ended successfully. Saving at $outputsFolderPath\O365AuditLogs.csv" -ForegroundColor DarkGreen
 
     return $true   
+}
+
+# Title
+# ExtractAuditData
+#
+# Params
+# filePath. String. Path to the file containing microsoft defender for office 365's auditlogs.
+#
+# Description
+# It will create a copy of the file, this time with more columns. The columns will be the keys from the json values at colum auditdata.
+#
+# Return
+# Boolean. True if audit logs were successfully retrieved. Else, false.
+# File. CSV format file including auditlogs.
+# 
+function ExtractAuditData {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$filePath
+    )
+
+    #1. Collect all json's keys
+    $csv = Import-Csv $filePath
+    $allKeys = @()
+    foreach ($row in $csv) {
+        if ($row.AuditData) {
+            $json = $row.AuditData | ConvertFrom-Json
+            $jsonKey = $json.PSObject.Properties.Name
+            $myKey = $jsonKey + "FromJson"
+            $allKeys += $myKey
+        }
+    }
+    $allKeys = $allKeys | Sort-Object -Unique
+    write-host $allKeys
+
+    #2. Add json keys as csv columns
+    $flattened = foreach ($row in $data) {
+
+        $json = @{}
+        if ($row.AuditData) {
+            $parsed = $row.AuditData | ConvertFrom-Json
+            foreach ($key in $allKeys) {
+                $json[$key] = $parsed.$key
+            }
+        } else {
+            foreach ($key in $allKeys) {
+                $json[$key] = $null
+            }
+        }
+
+        # Combinar columnas originales + json
+        [PSCustomObject]@{
+            CreationDate = $row.CreationDate
+            ResultIndex  = $row.ResultIndex
+            UserIds      = $row.UserIds
+            RecordType   = $row.RecordType
+            Operations   = $row.Operations
+        } + $json
+    }
+
+    #3. Export to csv
+    $flattened | Export-Csv "parseado.csv" -NoTypeInformation
+
+
 }
