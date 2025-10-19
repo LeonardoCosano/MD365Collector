@@ -109,7 +109,7 @@ function SetEnvironmentReadyForMD365Collector {
         $IsEnvironmentReady = $false
     }
 
-    ## ToDo Check if user account has permissions enough
+    ## ToDo Check if user account has permissions enough (Get-ManagementRoleAssignment -RoleAssignee user@domain.com)
     if (-not ($IsEnvironmentReady)){
         Write-Host 'Environment is not ready, please fix errors described below.' -ForegroundColor DarkRed 
     }
