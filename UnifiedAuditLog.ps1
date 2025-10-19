@@ -275,5 +275,101 @@ function ExtractAuditData {
         $newRowDataObject = [PSCustomObject]$newRowData
         $newRowDataObject | Export-Csv $outputPath -NoTypeInformation -Append -Force
             
-    }    
+    }
+    
+    Write-Host 'Extraction is ready. You can now inspect results on $outputPath' -ForegroundColor DarkGreen   
+}
+
+# Title
+# ExtractReadMails
+#
+# Params
+# fileName. String. file containing microsoft defender for office 365's auditlogs.
+#
+# Description
+# It will read the original CSV auditlogs file from microsoft defender and output the number of read mails.
+#
+# Return
+# Boolean. True if mail data was successfully retrieved. Else, false.
+# File. CSV format file including auditlogs.
+# 
+function ExtractReadMails {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$fileName
+    )
+
+    # 1. Check correct input parameter
+    $InputCsvPath = Join-Path (Get-Location) $fileName
+    if (-not (test-path $InputCsvPath)){
+        write-host "Indicated file $filename was not found. We were looking on folder $(Get-location)" -ForegroundColor DarkRed
+        return $false
+    }
+
+    # 2. Create file for results
+    $outputCsv = [System.IO.Path]::ChangeExtension($InputCsvPath, "_readMails.csv")
+    if (-not (Test-Path $outputCsv)) {
+        [PSCustomObject]@{
+            TimeStamp = ""
+            Operation = ""
+            OperationProperty = ""
+            AADSessionId = ""
+            IssueTime =""
+            ClientIp = ""
+            ClientInfo = ""
+            EmailReadId = ""
+            EmailReadInmutableId = ""
+            EmailReadInternetMessageId = ""
+            EmailSubject = ""
+            EmailTo = ""
+            EmailFrom = ""
+        } | Export-Csv $outputCsv -NoTypeInformation
+    }
+
+    #3. Read every event from auditlogs to save read emails
+    $csv = Import-Csv $InputCsvPath 
+    foreach ($event in $csv){
+        
+        # We are only looking for MailItemsAccessed events
+        if ($event.Operations -ne "MailItemsAccessed"){
+            continue
+        }
+
+        $mailDetailsJson = $event.AuditData | ConvertFrom-Json
+
+        foreach ($folder in $mailDetailsJson.Folders){
+
+            foreach($item in $folder.FolderItems){
+
+                #emailData = Get-EXOMailboxMessage -Mailbox $mailDetailsJson.MailboxOwnerUPN -Filter "internetMessageId eq '$item.InternetMessageId'"
+
+                $dataToCsv = [PSCustomObject]@{
+                    TimeStamp = $mailDetailsJson.CreationTime
+                    Operation = $mailDetailsJson.Operation
+                    OperationProperty = $mailDetailsJson.OperationProperties.Name + $mailDetailsJson.OperationProperties.Value
+                    AADSessionId = $mailDetailsJson.AppAccessContext.AADSessionId
+                    IssueTime = $mailDetailsJson.AppAccessContext.IssuedAtTime
+                    ClientIp = $mailDetailsJson.ClientIPAddress
+                    ClientInfo = $mailDetailsJson.ClientInfoString
+                    EmailReadId = $item.Id
+                    EmailReadInmutableId = $item.ImmutableId
+                    EmailReadInternetMessageId = $item.InternetMessageId
+                    EmailSubject = "none"#emailData.subject
+                    EmailTo ="none"#emailData.ToRecipients
+                    EmailFrom = "none"#emailData.From
+                }
+
+
+                $dataToCsv | Export-Csv $outputCsv -NoTypeInformation -Append        
+                       
+            }
+
+        }                
+
+    }
+
+    #4. Save results
+    Write-Host 'Read mails extraction is ready. You can now inspect results on $outputPath' -ForegroundColor DarkGreen
+
+
 }
