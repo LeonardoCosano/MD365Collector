@@ -168,6 +168,12 @@ function GetAuditLogs {
         # Create a uniqueIdentifier, the epoch time
         $sessionID = [int][double]((New-TimeSpan -Start (Get-Date "1970-01-01T00:00:00Z") -End (Get-Date).ToUniversalTime()).TotalSeconds)
         $results = Search-UnifiedAuditLog -EndDate $end -StartDate $start -UserIds $user -HighCompleteness -ResultSize 5000 -SessionCommand ReturnLargeSet -SessionId $sessionID -errorAction stop
+
+        #ToDo Handle edge cases where event logs count is above 5000.
+        if($results.Count -cge 4900){
+            Write-Host "Watch out! Only 5k results were returned, if you need an exhaustive list please access AuditLogs search tool" -ForegroundColor DarkYellow
+        }
+
     }
     catch{
         Write-Host "Error while Search-UnifiedAuditLog execution: $_.Exception.Message" -ForegroundColor DarkRed
@@ -192,10 +198,10 @@ function GetAuditLogs {
 # ExtractAuditData
 #
 # Params
-# filePath. String. Path to the file containing microsoft defender for office 365's auditlogs.
+# fileName. String. file containing microsoft defender for office 365's auditlogs.
 #
 # Description
-# It will create a copy of the file, this time with more columns. The columns will be the keys from the json values at colum auditdata.
+# It will create a copy of the file, this time with more columns. New columns will be the keys from the json at original csv's colum "auditdata".
 #
 # Return
 # Boolean. True if audit logs were successfully retrieved. Else, false.
@@ -204,50 +210,70 @@ function GetAuditLogs {
 function ExtractAuditData {
     param(
         [Parameter(Mandatory=$true)]
-        [string]$filePath
+        [string]$fileName
     )
 
-    #1. Collect all json's keys
-    $csv = Import-Csv $filePath
-    $allKeys = @()
-    foreach ($row in $csv) {
-        if ($row.AuditData) {
-            $json = $row.AuditData | ConvertFrom-Json
-            $jsonKey = $json.PSObject.Properties.Name
-            $myKey = $jsonKey + "FromJson"
-            $allKeys += $myKey
-        }
-    }
-    $allKeys = $allKeys | Sort-Object -Unique
-    write-host $allKeys
-
-    #2. Add json keys as csv columns
-    $flattened = foreach ($row in $data) {
-
-        $json = @{}
-        if ($row.AuditData) {
-            $parsed = $row.AuditData | ConvertFrom-Json
-            foreach ($key in $allKeys) {
-                $json[$key] = $parsed.$key
-            }
-        } else {
-            foreach ($key in $allKeys) {
-                $json[$key] = $null
-            }
-        }
-
-        # Combinar columnas originales + json
-        [PSCustomObject]@{
-            CreationDate = $row.CreationDate
-            ResultIndex  = $row.ResultIndex
-            UserIds      = $row.UserIds
-            RecordType   = $row.RecordType
-            Operations   = $row.Operations
-        } + $json
+    # 1. Check correct input parameter
+    $InputCsvPath = Join-Path (Get-Location) $fileName
+    if (-not (test-path $InputCsvPath)){
+        write-host "Indicated file $filename was not found. We were looking on folder $(Get-location)" -ForegroundColor DarkRed
+        return $false
     }
 
-    #3. Export to csv
-    $flattened | Export-Csv "parseado.csv" -NoTypeInformation
+    # 2. Obtain all csv headers
+
+    $csv = Import-Csv $InputCsvPath 
+
+    ## 2.1. Save original ones
+    $originalHeaders = $csv[0].PSObject.Properties.Name
+
+    ## 2.2. Save new headers, which are the key vaules of the json stored at auditdata colum.
+    $newHeaders = @()
+    foreach ($row in $csv){
+
+        if ($row.AuditData) {
+            $jsonAuditData = $row.AuditData | ConvertFrom-Json
+            $newHeaders += $jsonAuditData.PSObject.Properties.Name
+            #ToDo. Handle json properly. the auditlog includes nested jsons which are not properly dropped into the new file.
+         }
+
+     }
 
 
+    $newHeaders = $newHeaders | Sort-Object -Unique
+
+    # 3. Create a list of desired headers
+    $desiredHeaders = $originalHeaders
+    foreach ($header in $newHeaders){
+       $desiredHeaders += "${header}Json"
+    }
+
+    # 4. Create a csv file containing only the first row, with the desired headers
+    $outputPath = [System.IO.Path]::ChangeExtension($InputCsvPath, "_expanded.csv")
+    $headerRow = ($desiredHeaders -join ",")
+    $headerRow | Out-File -FilePath $outputPath -Encoding UTF8
+
+    # 5. Append rows to new csvFile
+    foreach ($row in $csv){
+        
+        ## 5.1. Defines the new set of data
+        $newRowData = @{}
+
+        ## 5.2. Adds original data
+        foreach ($header in $originalHeaders){
+            $newRowData["$header"] = $row.$header
+        }
+
+        ## 5.3. Add new headers data
+        $rowJson = $row.AuditData | ConvertFrom-Json
+        foreach ($header in $newHeaders){
+            $headerName = $header + "Json"
+            $newRowData["$headerName"] = $rowJson.$header
+        }
+        
+        ##5.4. Push the data to row
+        $newRowDataObject = [PSCustomObject]$newRowData
+        $newRowDataObject | Export-Csv $outputPath -NoTypeInformation -Append -Force
+            
+    }    
 }
