@@ -17,102 +17,8 @@
 
 #>
 
-# Title
-# isDateUTC
-#
-# Params
-# Date. String. Date value in unkown format
-#
-# Description
-# It confirms wether variable is datetime in format UTC.
-#
-# Return
-# Boolean. True if date is UTC. Else, false.
-# 
-function isDateUTC {
-    param(
-        [Parameter(Mandatory=$true)]
-        [DateTime]$Date
-    )
-
-    # Checks whether parameter is in a valid date variable
-    if (-not ($date -is [DateTime])) {
-        Write-Host "Date parameter is not a valid datetime variable" -ForegroundColor DarkRed
-        return $false 
-    } 
-
-    # Catches exceptions due to access Kind property of a date variable.
-    try{
-        # Checks wether date variable is in UTC
-        $dateKind = $date.Kind
-        if ($dateKind -eq [System.DateTimeKind]::Utc -or $dateKind -eq [System.DateTimeKind]::Local) {
-            return $true
-        }
-    }
-    catch{
-        Write-Host "Error while inspecting date parameter date format kind property $a_.Exception.Message" -ForegroundColor DarkRed  
-        return $false
-    }
-
-    # If date variable is not UTC, return false. 
-    return $false
-
-}
-
-# Title
-# isOutputFolderCreated
-#
-# Params
-# path. String. the path of the folder to be checked.
-#
-# Description
-# It will search if a folder exists.
-#
-# Return
-# Boolean. True if folder already exists. Else, false.
-# 
-function isOutputFolderCreated {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$path
-    )
-
-    if (-not (Test-Path $path)) {
-        return $false
-    }
-
-    return $true
-}
-
-# Title
-# createOutputFolder
-#
-# Params
-# path. String. the path of the folder to be created.
-#
-# Description
-# It will create a folder.
-#
-# Return
-# string. If folder is successfully created, true. Else, false.
-# 
-function createOutputFolder {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$path
-    )
-
-    try{
-        New-Item -Path $path -ItemType Directory | Out-Null
-    }
-    catch{
-        return $false
-    }
-
-    return $true
-}
-
-
+# ToDo Remove force flag in production
+Import-Module "$PSScriptRoot\utils.ps1" -Force
 
 # Title
 # GetAuditLogs
@@ -123,7 +29,8 @@ function createOutputFolder {
 # EndDate. String. Optional. Ending date from the log investigation timeframe
 #
 # Description
-# It searches audit log events from the username indicated during the timeframe established. It also saves output into a output folder
+# It collects audit log events from microsoft office 365. Right now you can only use following filters:
+# username, timeframe.
 #
 # Return
 # Boolean. True if audit logs were successfully retrieved. Else, false.
@@ -170,8 +77,8 @@ function GetAuditLogs {
         $results = Search-UnifiedAuditLog -EndDate $end -StartDate $start -UserIds $user -HighCompleteness -ResultSize 5000 -SessionCommand ReturnLargeSet -SessionId $sessionID -errorAction stop
 
         #ToDo Handle edge cases where event logs count is above 5000.
-        if($results.Count -cge 4900){
-            Write-Host "Watch out! Only 5k results were returned, if you need an exhaustive list please access AuditLogs search tool" -ForegroundColor DarkYellow
+        if($results.Count -cge 4999){
+            Write-Host "Watch out! Only 5k results were returned, if you need an exhaustive list please reduce the searching timeframe" -ForegroundColor DarkYellow
         }
 
     }
@@ -188,20 +95,22 @@ function GetAuditLogs {
     }
 
     ## 3.2. Save results
-    $results | Select-Object CreationDate, ResultIndex, UserIds, RecordType, Operations, AuditData  | Export-Csv "$outputsFolderPath\O365AuditLogs.csv" -NoTypeInformation
+    $results | Select-Object * | Export-Csv "$outputsFolderPath\O365AuditLogs.csv" -NoTypeInformation
     Write-Host "AuditLog search ended successfully. Saving at $outputsFolderPath\O365AuditLogs.csv" -ForegroundColor DarkGreen
 
     return $true   
 }
 
+
 # Title
 # ExtractAuditData
 #
 # Params
-# fileName. String. file containing microsoft defender for office 365's auditlogs.
+# fileName. String. local file containing microsoft office 365's auditlogs.
 #
 # Description
-# It will create a copy of the file, this time with more columns. New columns will be the keys from the json at original csv's colum "auditdata".
+# It will create a copy of the file, this new file will have more columns. New columns's names will be the keys from the json at original csv's colum "auditdata".
+# This may be useful because for some auditlogs operations (mailitemsaccessed for example) the valuable part is stored in auditdata, inside a json, so it cant be easily parsed and filtered
 #
 # Return
 # Boolean. True if audit logs were successfully retrieved. Else, false.
@@ -227,7 +136,7 @@ function ExtractAuditData {
     ## 2.1. Save original ones
     $originalHeaders = $csv[0].PSObject.Properties.Name
 
-    ## 2.2. Save new headers, which are the key vaules of the json stored at auditdata colum.
+    ## 2.2. Save new headers, which are the key values of the json stored at auditdata colum.
     $newHeaders = @()
     foreach ($row in $csv){
 
@@ -242,14 +151,14 @@ function ExtractAuditData {
 
     $newHeaders = $newHeaders | Sort-Object -Unique
 
-    # 3. Create a list of desired headers
+    # 3. Create a list of desired headers (columns from the new csv)
     $desiredHeaders = $originalHeaders
     foreach ($header in $newHeaders){
        $desiredHeaders += "${header}Json"
     }
 
-    # 4. Create a csv file containing only the first row, with the desired headers
-    $outputPath = [System.IO.Path]::ChangeExtension($InputCsvPath, "_expanded.csv")
+    # 4. Create a csv file containing only the first header row with the desired headers
+    $outputPath = [System.IO.Path]::ChangeExtension($InputCsvPath, "expanded.csv")
     $headerRow = ($desiredHeaders -join ",")
     $headerRow | Out-File -FilePath $outputPath -Encoding UTF8
 
@@ -307,7 +216,7 @@ function ExtractReadMails {
     }
 
     # 2. Create file for results
-    $outputCsv = [System.IO.Path]::ChangeExtension($InputCsvPath, "_readMails.csv")
+    $outputCsv = [System.IO.Path]::ChangeExtension($InputCsvPath, "readMails.csv")
     if (-not (Test-Path $outputCsv)) {
         [PSCustomObject]@{
             TimeStamp = ""
@@ -335,13 +244,27 @@ function ExtractReadMails {
             continue
         }
 
+        # Each mailItemAccess contains at least 1 mail read, for each one, we get properties
         $mailDetailsJson = $event.AuditData | ConvertFrom-Json
-
         foreach ($folder in $mailDetailsJson.Folders){
-
             foreach($item in $folder.FolderItems){
+                
+                # this call here gets properties
+                $readEmailDetails = Get-MessageTraceV2 -MessageId "$($item.InternetMessageId)"
 
-                #emailData = Get-EXOMailboxMessage -Mailbox $mailDetailsJson.MailboxOwnerUPN -Filter "internetMessageId eq '$item.InternetMessageId'"
+                # If no properties are found related to the internetmessageid, this data columns are not filled
+                if (-not ($readEmailDetails)){
+                    write-host "No mail has been found with InternetMessageId $($item.InternetMessageId)" -ForegroundColor DarkYellow
+                    $emailSubject = ""
+                    $emailTo = ""
+                    $emailFrom = ""
+                } else {
+
+                    $emailSubject = $readEmailDetails[0].subject
+                    $emailTo = $readEmailDetails[0].RecipientAddress
+                    $emailFrom = $readEmailDetails[0].SenderAddress
+                
+                }
 
                 $dataToCsv = [PSCustomObject]@{
                     TimeStamp = $mailDetailsJson.CreationTime
@@ -354,18 +277,15 @@ function ExtractReadMails {
                     EmailReadId = $item.Id
                     EmailReadInmutableId = $item.ImmutableId
                     EmailReadInternetMessageId = $item.InternetMessageId
-                    EmailSubject = "none"#emailData.subject
-                    EmailTo ="none"#emailData.ToRecipients
-                    EmailFrom = "none"#emailData.From
+                    EmailSubject = $emailSubject
+                    EmailTo =$emailTo
+                    EmailFrom = $emailFrom
                 }
-
 
                 $dataToCsv | Export-Csv $outputCsv -NoTypeInformation -Append        
                        
             }
-
         }                
-
     }
 
     #4. Save results
