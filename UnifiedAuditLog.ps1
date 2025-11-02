@@ -24,7 +24,7 @@ Import-Module "$PSScriptRoot\utils.ps1" -Force
 # GetAuditLogs
 #
 # Params
-# UserName. String. Comma separated list of user principal names to be investigated.
+# User. String. Comma separated list of user principal names to be investigated.
 # StartDate. String. Optional. Starting date from the log investigation timeframe
 # EndDate. String. Optional. Ending date from the log investigation timeframe
 #
@@ -245,7 +245,7 @@ function ExtractReadMails {
                 
                 # this call here gets properties
                 $90DaysAgoDate = $((Get-Date).AddDays(-90))
-                $readEmailDetails = Get-MessageTraceV2 -MessageId "$($item.InternetMessageId)" -StartDate $($90DaysAgoDate.ToString("MM/dd/yyyy"))
+                $readEmailDetails = Get-MessageTraceV2 -MessageId "$($item.InternetMessageId)" #-StartDate $($90DaysAgoDate.ToString("MM/dd/yyyy"))
 
                 # If no properties are found related to the internetmessageid, this data columns are not filled
                 if (-not ($readEmailDetails)){
@@ -254,7 +254,7 @@ function ExtractReadMails {
                     $emailTo = ""
                     $emailFrom = ""
                 } else {
-
+                    write-host "mail has been found with InternetMessageId $($item.InternetMessageId)" -ForegroundColor DarkCyan
                     $emailSubject = $readEmailDetails[0].subject
                     $emailTo = $readEmailDetails[0].RecipientAddress
                     $emailFrom = $readEmailDetails[0].SenderAddress
@@ -282,5 +282,110 @@ function ExtractReadMails {
     #4. Save results
     Write-Host 'Read mails extraction is ready. You can now inspect results on $outputPath' -ForegroundColor DarkGreen
 
+
+}
+
+
+# Title
+# GetReadMails
+#
+# Params
+# fileName. String. file containing microsoft defender for office 365's auditlogs.
+#
+# Description
+# It will read the original CSV file containing auditlogs from microsoft defender and create a new csv which will contain data about the emails.
+#
+# Return
+# Boolean. True if mail data was successfully retrieved. Else, false.
+# File. CSV format file including auditlogs.
+# 
+function GetReadMails {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$fileName
+    )
+
+    # 1. Check correct input parameter
+    $InputCsvPath = Join-Path (Get-Location) $fileName
+    if (-not (test-path $InputCsvPath)){
+        write-host "Indicated file $filename was not found. We were looking on folder $(Get-location)" -ForegroundColor DarkRed
+        return $false
+    }
+
+    #2. Read every event from auditlogs to save data already stored in auditlogs ("AADSessionId", "ClientIp", "EmailReadId", "EmailReadInmutableId", "EmailReadInternetMessageId")
+    $AADSessionIdentifiers = @()
+    $ClientIps =@()
+    $emailIdentifier = @()
+    $emailIdentifierInmutable = @()
+    $emailIdentifierInternet = @()
+
+    $csv = Import-Csv $InputCsvPath
+    foreach ($event in $csv){
+        
+        if ($event.Operations -ne "MailItemsAccessed"){
+            continue #skip this event 
+        }
+
+        # Each mailItemAccess event contains a json on AuditData field
+        $mailDetailsJson = $event.AuditData | ConvertFrom-Json
+        # Each read mails is inside a folder
+        foreach ($readFolder in $mailDetailsJson.Folders){
+            foreach($readMail in $readFolder.FolderItems){
+                $AADSessionIdentifiers += $mailDetailsJson.AppAccessContext.AADSessionId
+                $ClientIps += $mailDetailsJson.ClientIPAddress
+                $emailIdentifier += $readMail.Id
+                $emailIdentifierInmutable += $readMail.ImmutableId
+                $emailIdentifierInternet += $readMail.InternetMessageId                               
+            }
+        }
+    }   
+
+    #3. ToDo. Get read emails data which is not stored on the auditlogs ("EmailReadInternetMessageId", "EmailSubject", "EmailFrom"), based on internetmessageid got in prev step.
+    $emailSubject = @()
+    $emailSender = @()
+    $emailIdentifierInternetParsed = $($emailIdentifierInternet -join ",")
+    $filterEndDate = (Get-Date).ToString("dd/MM/yyyy")
+    $filterStartDate = ((Get-Date).AddDays(-10)).ToString("dd/MM/yyyy")
+
+    
+    $AllEmailDetails = Get-MessageTraceV2 -MessageId "$($emailIdentifierInternetParsed)" -EndDate $($filterEndDate) -StartDate $($filterStartDate) | select-object MessageId, SenderAddress, Subject #| Select-Object -First 1
+
+
+    #4. ToDo. Store data from both 2 and 3 step into csv
+    $outputCsv = [System.IO.Path]::ChangeExtension($InputCsvPath, "AccessedEmails.csv")
+    $headers = @("AADSessionId", "ClientIp", "EmailReadId", "EmailReadInmutableId", "EmailReadInternetMessageId", "EmailSubject", "EmailFrom")
+    if (-not (Test-Path $outputCsv)) {
+        $($headers -join ",") | Out-File -FilePath $outputCsv -Encoding UTF8
+    }
+
+    foreach ($emailIndex in 1..$($emailIdentifierInternet.count)) {
+
+        $newEmailAADSession = $AADSessionIdentifiers[$($emailindex)]
+        $newEmailClientIp = $ClientIps[$($emailindex)]
+        $newEmailIdentifier = $emailIdentifier[$($emailindex)]
+        $newEmailIdentifierInmutable = $emailIdentifierInmutable[$($emailindex)]
+        $newEmailIdentifierInternet = $emailIdentifierInternet[$($emailindex)]
+        $newEmailDetails = $AllEmailDetails | where-object { $_.MessageId -match $newEmailIdentifierInternet} | Select-Object -First 1
+
+        $newEmailSubject = $newEmailDetails.Subject
+        $newEmailSender = $newEmailDetails.SenderAddress
+
+        <#write-host $newEmailIdentifierInternet
+        write-host $newEmailSubject
+        read-host#>
+
+        $dataToCsv = [PSCustomObject]@{
+            AADSessionId = $newEmailAADSession
+            ClientIp = $newEmailClientIp
+            EmailReadId = $newEmailIdentifier
+            EmailReadInmutableId = $newEmailIdentifierInmutable
+            EmailReadInternetMessageId = $newEmailIdentifierInternet
+            EmailSubject = $newEmailSubject
+            EmailFrom = $newEmailSender
+        }
+
+        $dataToCsv | Export-Csv $outputCsv -NoTypeInformation -Append  
+
+    }
 
 }
