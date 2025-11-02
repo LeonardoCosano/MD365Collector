@@ -291,6 +291,7 @@ function ExtractReadMails {
 #
 # Params
 # fileName. String. file containing microsoft defender for office 365's auditlogs.
+# silent. boolean. indicates if function should print (false) or not (true).
 #
 # Description
 # It will read the original CSV file containing auditlogs from microsoft defender and create a new csv which will contain data about the emails.
@@ -302,7 +303,9 @@ function ExtractReadMails {
 function GetReadMails {
     param(
         [Parameter(Mandatory=$true)]
-        [string]$fileName
+        [string]$fileName,
+        [Parameter(Mandatory=$false)]
+        [bool]$silent
     )
 
     # 1. Check correct input parameter
@@ -370,9 +373,12 @@ function GetReadMails {
         $newEmailSubject = $newEmailDetails.Subject
         $newEmailSender = $newEmailDetails.SenderAddress
 
-        <#write-host $newEmailIdentifierInternet
-        write-host $newEmailSubject
-        read-host#>
+ 
+        if ($newEmailSubject -eq $null){
+            $newEmailSubject = "Details not found."
+            $newEmailSender = "Details not found."
+        }
+
 
         $dataToCsv = [PSCustomObject]@{
             AADSessionId = $newEmailAADSession
