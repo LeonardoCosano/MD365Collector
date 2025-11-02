@@ -217,25 +217,13 @@ function ExtractReadMails {
 
     # 2. Create file for results
     $outputCsv = [System.IO.Path]::ChangeExtension($InputCsvPath, "readMails.csv")
+    $headers = @("TimeStamp", "AADSessionId", "ClientIp", "EmailReadId", "EmailReadInmutableId", "EmailReadInternetMessageId", "EmailSubject", "EmailTo", "EmailFrom")
     if (-not (Test-Path $outputCsv)) {
-        [PSCustomObject]@{
-            TimeStamp = ""
-            Operation = ""
-            OperationProperty = ""
-            AADSessionId = ""
-            IssueTime =""
-            ClientIp = ""
-            ClientInfo = ""
-            EmailReadId = ""
-            EmailReadInmutableId = ""
-            EmailReadInternetMessageId = ""
-            EmailSubject = ""
-            EmailTo = ""
-            EmailFrom = ""
-        } | Export-Csv $outputCsv -NoTypeInformation
+        $($headers -join ",") | Out-File -FilePath $outputCsv -Encoding UTF8
     }
 
     #3. Read every event from auditlogs to save read emails
+    $readEmailsId = @()
     $csv = Import-Csv $InputCsvPath 
     foreach ($event in $csv){
         
@@ -248,9 +236,16 @@ function ExtractReadMails {
         $mailDetailsJson = $event.AuditData | ConvertFrom-Json
         foreach ($folder in $mailDetailsJson.Folders){
             foreach($item in $folder.FolderItems){
+
+                
+                if ($readEmailsId -contains $($item.InternetMessageId)){
+                    continue
+                }
+                $readEmailsId += "$($item.InternetMessageId)"
                 
                 # this call here gets properties
-                $readEmailDetails = Get-MessageTraceV2 -MessageId "$($item.InternetMessageId)"
+                $90DaysAgoDate = $((Get-Date).AddDays(-90))
+                $readEmailDetails = Get-MessageTraceV2 -MessageId "$($item.InternetMessageId)" -StartDate $($90DaysAgoDate.ToString("MM/dd/yyyy"))
 
                 # If no properties are found related to the internetmessageid, this data columns are not filled
                 if (-not ($readEmailDetails)){
@@ -268,12 +263,8 @@ function ExtractReadMails {
 
                 $dataToCsv = [PSCustomObject]@{
                     TimeStamp = $mailDetailsJson.CreationTime
-                    Operation = $mailDetailsJson.Operation
-                    OperationProperty = $mailDetailsJson.OperationProperties.Name + $mailDetailsJson.OperationProperties.Value
                     AADSessionId = $mailDetailsJson.AppAccessContext.AADSessionId
-                    IssueTime = $mailDetailsJson.AppAccessContext.IssuedAtTime
                     ClientIp = $mailDetailsJson.ClientIPAddress
-                    ClientInfo = $mailDetailsJson.ClientInfoString
                     EmailReadId = $item.Id
                     EmailReadInmutableId = $item.ImmutableId
                     EmailReadInternetMessageId = $item.InternetMessageId
