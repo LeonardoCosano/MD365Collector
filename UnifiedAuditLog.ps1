@@ -103,7 +103,7 @@ function GetAuditLogs {
 
 
 # Title
-# ExtractAuditData
+# ExpandAuditLogsFile
 #
 # Params
 # fileName. String. local file containing microsoft office 365's auditlogs.
@@ -116,7 +116,7 @@ function GetAuditLogs {
 # Boolean. True if audit logs were successfully retrieved. Else, false.
 # File. CSV format file including auditlogs.
 # 
-function ExtractAuditData {
+function ExpandAuditLogsFile {
     param(
         [Parameter(Mandatory=$true)]
         [string]$fileName
@@ -130,7 +130,6 @@ function ExtractAuditData {
     }
 
     # 2. Obtain all csv headers
-
     $csv = Import-Csv $InputCsvPath 
 
     ## 2.1. Save original ones
@@ -148,7 +147,6 @@ function ExtractAuditData {
 
      }
 
-
     $newHeaders = $newHeaders | Sort-Object -Unique
 
     # 3. Create a list of desired headers (columns from the new csv)
@@ -162,10 +160,25 @@ function ExtractAuditData {
     $headerRow = ($desiredHeaders -join ",")
     $headerRow | Out-File -FilePath $outputPath -Encoding UTF8
 
+    $counter=1
+    $total=$csv.length
+
+    Write-Host 'Creating a new file with expanded properties. Hang a moment, this may take a few minutes' -ForegroundColor DarkCyan
     # 5. Append rows to new csvFile
     foreach ($row in $csv){
+        $counter = $counter + 1
+
+        if ($counter -eq $total/4){ 
+            write-host "25% rows expanded" -ForegroundColor DarkYellow
+        }
+        if ($counter -eq $total/2){
+            write-host "50% rows expanded" -ForegroundColor DarkYellow  
+        }
+        if ($counter -eq ($total/4)*3){
+            write-host "75% rows expanded" -ForegroundColor DarkYellow  
+        }
         
-        ## 5.1. Defines the new set of data
+        ## 5.1. Defines the new set of data to be pushed to csv
         $newRowData = @{}
 
         ## 5.2. Adds original data
@@ -177,7 +190,17 @@ function ExtractAuditData {
         $rowJson = $row.AuditData | ConvertFrom-Json
         foreach ($header in $newHeaders){
             $headerName = $header + "Json"
-            $newRowData["$headerName"] = $rowJson.$header
+
+            if ($rowJson.$header -is [System.Object[]]){
+
+               $newRowData["$headerName"] = $($rowJson.$header | ConvertTo-Json)#Out-String)                 
+
+            } else {
+
+                $newRowData["$headerName"] = $rowJson.$header
+            
+            }
+
         }
         
         ##5.4. Push the data to row
@@ -189,109 +212,13 @@ function ExtractAuditData {
     Write-Host 'Extraction is ready. You can now inspect results on $outputPath' -ForegroundColor DarkGreen   
 }
 
-# Title
-# ExtractReadMails
-#
-# Params
-# fileName. String. file containing microsoft defender for office 365's auditlogs.
-#
-# Description
-# It will read the original CSV auditlogs file from microsoft defender and output the number of read mails.
-#
-# Return
-# Boolean. True if mail data was successfully retrieved. Else, false.
-# File. CSV format file including auditlogs.
-# 
-function ExtractReadMails {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$fileName
-    )
-
-    # 1. Check correct input parameter
-    $InputCsvPath = Join-Path (Get-Location) $fileName
-    if (-not (test-path $InputCsvPath)){
-        write-host "Indicated file $filename was not found. We were looking on folder $(Get-location)" -ForegroundColor DarkRed
-        return $false
-    }
-
-    # 2. Create file for results
-    $outputCsv = [System.IO.Path]::ChangeExtension($InputCsvPath, "readMails.csv")
-    $headers = @("TimeStamp", "AADSessionId", "ClientIp", "EmailReadId", "EmailReadInmutableId", "EmailReadInternetMessageId", "EmailSubject", "EmailTo", "EmailFrom")
-    if (-not (Test-Path $outputCsv)) {
-        $($headers -join ",") | Out-File -FilePath $outputCsv -Encoding UTF8
-    }
-
-    #3. Read every event from auditlogs to save read emails
-    $readEmailsId = @()
-    $csv = Import-Csv $InputCsvPath 
-    foreach ($event in $csv){
-        
-        # We are only looking for MailItemsAccessed events
-        if ($event.Operations -ne "MailItemsAccessed"){
-            continue
-        }
-
-        # Each mailItemAccess contains at least 1 mail read, for each one, we get properties
-        $mailDetailsJson = $event.AuditData | ConvertFrom-Json
-        foreach ($folder in $mailDetailsJson.Folders){
-            foreach($item in $folder.FolderItems){
-
-                
-                if ($readEmailsId -contains $($item.InternetMessageId)){
-                    continue
-                }
-                $readEmailsId += "$($item.InternetMessageId)"
-                
-                # this call here gets properties
-                $90DaysAgoDate = $((Get-Date).AddDays(-90))
-                $readEmailDetails = Get-MessageTraceV2 -MessageId "$($item.InternetMessageId)" #-StartDate $($90DaysAgoDate.ToString("MM/dd/yyyy"))
-
-                # If no properties are found related to the internetmessageid, this data columns are not filled
-                if (-not ($readEmailDetails)){
-                    write-host "No mail has been found with InternetMessageId $($item.InternetMessageId)" -ForegroundColor DarkYellow
-                    $emailSubject = ""
-                    $emailTo = ""
-                    $emailFrom = ""
-                } else {
-                    write-host "mail has been found with InternetMessageId $($item.InternetMessageId)" -ForegroundColor DarkCyan
-                    $emailSubject = $readEmailDetails[0].subject
-                    $emailTo = $readEmailDetails[0].RecipientAddress
-                    $emailFrom = $readEmailDetails[0].SenderAddress
-                
-                }
-
-                $dataToCsv = [PSCustomObject]@{
-                    TimeStamp = $mailDetailsJson.CreationTime
-                    AADSessionId = $mailDetailsJson.AppAccessContext.AADSessionId
-                    ClientIp = $mailDetailsJson.ClientIPAddress
-                    EmailReadId = $item.Id
-                    EmailReadInmutableId = $item.ImmutableId
-                    EmailReadInternetMessageId = $item.InternetMessageId
-                    EmailSubject = $emailSubject
-                    EmailTo =$emailTo
-                    EmailFrom = $emailFrom
-                }
-
-                $dataToCsv | Export-Csv $outputCsv -NoTypeInformation -Append        
-                       
-            }
-        }                
-    }
-
-    #4. Save results
-    Write-Host 'Read mails extraction is ready. You can now inspect results on $outputPath' -ForegroundColor DarkGreen
-
-
-}
-
 
 # Title
 # GetReadMails
 #
 # Params
-# fileName. String. file containing microsoft defender for office 365's auditlogs.
-# silent. boolean. indicates if function should print (false) or not (true).
+# fileName. String. csv file containing microsoft defender for office 365's auditlogs.
+# verbose. boolean. indicates if function should print (true) or not (false) details about execution.
 #
 # Description
 # It will read the original CSV file containing auditlogs from microsoft defender and create a new csv which will contain data about the emails.
@@ -305,7 +232,7 @@ function GetReadMails {
         [Parameter(Mandatory=$true)]
         [string]$fileName,
         [Parameter(Mandatory=$false)]
-        [bool]$silent
+        [bool]$verbose
     )
 
     # 1. Check correct input parameter
@@ -343,38 +270,56 @@ function GetReadMails {
         }
     }   
 
-    #3. ToDo. Get read emails data which is not stored on the auditlogs ("EmailReadInternetMessageId", "EmailSubject", "EmailFrom"), based on internetmessageid got in prev step.
+    #3. Get read emails data which is not stored on the auditlogs ("EmailReadInternetMessageId", "EmailSubject", "EmailFrom"), based on internetmessageid got in prev step.
     $emailSubject = @()
     $emailSender = @()
     $emailIdentifierInternetParsed = $($emailIdentifierInternet -join ",")
     $filterEndDate = (Get-Date).ToString("dd/MM/yyyy")
     $filterStartDate = ((Get-Date).AddDays(-10)).ToString("dd/MM/yyyy")
 
-    
+    Write-Host "Searching email details on exchange from $($filterStartDate) to $($filterEndDate)" -ForegroundColor DarkCyan
     $AllEmailDetails = Get-MessageTraceV2 -MessageId "$($emailIdentifierInternetParsed)" -EndDate $($filterEndDate) -StartDate $($filterStartDate) | select-object MessageId, SenderAddress, Subject #| Select-Object -First 1
 
 
-    #4. ToDo. Store data from both 2 and 3 step into csv
+    #4. Store data from both 2 and 3 step into csv
     $outputCsv = [System.IO.Path]::ChangeExtension($InputCsvPath, "AccessedEmails.csv")
     $headers = @("AADSessionId", "ClientIp", "EmailReadId", "EmailReadInmutableId", "EmailReadInternetMessageId", "EmailSubject", "EmailFrom")
     if (-not (Test-Path $outputCsv)) {
         $($headers -join ",") | Out-File -FilePath $outputCsv -Encoding UTF8
     }
 
+
+    $counter = 1
+    $total = $emailIdentifierInternet.count
+
     foreach ($emailIndex in 1..$($emailIdentifierInternet.count)) {
+
+        $counter = $counter + 1
+
+        if ($counter -eq $total/4){ 
+            write-host "25% mails searched" -ForegroundColor DarkYellow
+        }
+        if ($counter -eq $total/2){
+            write-host "50% mails searched" -ForegroundColor DarkYellow  
+        }
+        if ($counter -eq ($total/4)*3){
+            write-host "75% mails searched" -ForegroundColor DarkYellow  
+        }
 
         $newEmailAADSession = $AADSessionIdentifiers[$($emailindex)]
         $newEmailClientIp = $ClientIps[$($emailindex)]
         $newEmailIdentifier = $emailIdentifier[$($emailindex)]
         $newEmailIdentifierInmutable = $emailIdentifierInmutable[$($emailindex)]
         $newEmailIdentifierInternet = $emailIdentifierInternet[$($emailindex)]
-        $newEmailDetails = $AllEmailDetails | where-object { $_.MessageId -match $newEmailIdentifierInternet} | Select-Object -First 1
-
+        $newEmailDetails = $AllEmailDetails | where-object { $_.MessageId -match $newEmailIdentifierInternet} | Select-Object -First 
         $newEmailSubject = $newEmailDetails.Subject
         $newEmailSender = $newEmailDetails.SenderAddress
 
  
         if ($newEmailSubject -eq $null){
+            if ($verbose -eq $true){
+                write-host "No data subject neither sender found for $newEmailIdentifierInternet" -ForegroundColor DarkYellow
+            }
             $newEmailSubject = "Details not found."
             $newEmailSender = "Details not found."
         }
@@ -393,5 +338,8 @@ function GetReadMails {
         $dataToCsv | Export-Csv $outputCsv -NoTypeInformation -Append  
 
     }
+
+    #5. Save results
+    Write-Host 'Read mails extraction is ready. You can now inspect results on $outputCsv' -ForegroundColor DarkGreen
 
 }
