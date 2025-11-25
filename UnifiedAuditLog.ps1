@@ -219,6 +219,7 @@ function ExpandAuditLogsFile {
 # Params
 # fileName. String. csv file containing microsoft defender for office 365's auditlogs.
 # showErrors. boolean. indicates if function should print (true) or not (false) details about mails not found.
+# daysBack. int. helps setting the time window for searching email details. I recommend starting by default and continue adding 10, 20, 30...10*x if some details is missing and you really need it.
 #
 # Description
 # It will read the original CSV file containing auditlogs from microsoft defender and create a new csv which will contain data about the emails.
@@ -232,7 +233,9 @@ function GetReadMails {
         [Parameter(Mandatory=$true)]
         [string]$fileName,
         [Parameter(Mandatory=$false)]
-        [switch]$showErrors
+        [switch]$showErrors,
+        [Parameter(Mandatory=$false)]
+        [int]$daysBack=0
     )
 
     # 1. Check correct input parameter
@@ -261,11 +264,14 @@ function GetReadMails {
         # Each read mails is inside a folder
         foreach ($readFolder in $mailDetailsJson.Folders){
             foreach($readMail in $readFolder.FolderItems){
-                $AADSessionIdentifiers += $mailDetailsJson.AppAccessContext.AADSessionId
-                $ClientIps += $mailDetailsJson.ClientIPAddress
-                $emailIdentifier += $readMail.Id
-                $emailIdentifierInmutable += $readMail.ImmutableId
-                $emailIdentifierInternet += $readMail.InternetMessageId                               
+                #Skip repeated values of the internet message id
+                if ($emailIdentifierInternet -notcontains $readMail.InternetMessageId){
+                    $AADSessionIdentifiers += $mailDetailsJson.AppAccessContext.AADSessionId
+                    $ClientIps += $mailDetailsJson.ClientIPAddress
+                    $emailIdentifier += $readMail.Id
+                    $emailIdentifierInmutable += $readMail.ImmutableId
+                    $emailIdentifierInternet += $readMail.InternetMessageId   
+                }                            
             }
         }
     }   
@@ -274,8 +280,8 @@ function GetReadMails {
     $emailSubject = @()
     $emailSender = @()
     $emailIdentifierInternetParsed = $($emailIdentifierInternet -join ",")
-    $filterEndDate = (Get-Date).ToString("dd/MM/yyyy")
-    $filterStartDate = ((Get-Date).AddDays(-10)).ToString("dd/MM/yyyy")
+    $filterEndDate = (Get-Date).AddDays(-$($daysBack)).ToString("dd/MM/yyyy")
+    $filterStartDate = ((Get-Date).AddDays(-10-$($daysback))).ToString("dd/MM/yyyy")
 
     Write-Host "Searching email details on exchange from $($filterStartDate) to $($filterEndDate)" -ForegroundColor DarkCyan
     $AllEmailDetails = Get-MessageTraceV2 -MessageId "$($emailIdentifierInternetParsed)" -EndDate $($filterEndDate) -StartDate $($filterStartDate) | select-object MessageId, SenderAddress, Subject
@@ -297,13 +303,13 @@ function GetReadMails {
 
         $counter = $counter + 1
 
-        if ($counter -eq $total/4){ 
+        if ($counter -eq [int]($total/4)){ 
             write-host "25% mails searched" -ForegroundColor DarkYellow
         }
-        if ($counter -eq $total/2){
+        if ($counter -eq [int]($total/2)){
             write-host "50% mails searched" -ForegroundColor DarkYellow  
         }
-        if ($counter -eq ($total/4)*3){
+        if ($counter -eq [int]($total/4)*3){
             write-host "75% mails searched" -ForegroundColor DarkYellow  
         }
 
@@ -325,8 +331,7 @@ function GetReadMails {
             $newEmailSubject = "Details not found."
             $newEmailSender = "Details not found."
         }
-
-
+        
         $dataToCsv = [PSCustomObject]@{
             AADSessionId = $newEmailAADSession
             ClientIp = $newEmailClientIp
@@ -338,11 +343,12 @@ function GetReadMails {
         }
 
         $dataToCsv | Export-Csv $outputCsv -NoTypeInformation -Append  
+        
 
     }
 
     #5. Save results
     Write-Host "Read mails extraction is ready. You can now inspect results on $($outputCsv)" -ForegroundColor DarkGreen
-    Write-host "$($mailsNotFound) of $($total) mails were not found." -ForegroundColor DarkYellow
+    Write-host "$($mailsNotFound) of $($total) mails were not found. You may want to use -daysBack" -ForegroundColor DarkYellow
 
 }
