@@ -218,7 +218,7 @@ function ExpandAuditLogsFile {
 #
 # Params
 # fileName. String. csv file containing microsoft defender for office 365's auditlogs.
-# verbose. boolean. indicates if function should print (true) or not (false) details about execution.
+# showErrors. boolean. indicates if function should print (true) or not (false) details about mails not found.
 #
 # Description
 # It will read the original CSV file containing auditlogs from microsoft defender and create a new csv which will contain data about the emails.
@@ -232,7 +232,7 @@ function GetReadMails {
         [Parameter(Mandatory=$true)]
         [string]$fileName,
         [Parameter(Mandatory=$false)]
-        [bool]$verbose
+        [switch]$showErrors
     )
 
     # 1. Check correct input parameter
@@ -278,7 +278,7 @@ function GetReadMails {
     $filterStartDate = ((Get-Date).AddDays(-10)).ToString("dd/MM/yyyy")
 
     Write-Host "Searching email details on exchange from $($filterStartDate) to $($filterEndDate)" -ForegroundColor DarkCyan
-    $AllEmailDetails = Get-MessageTraceV2 -MessageId "$($emailIdentifierInternetParsed)" -EndDate $($filterEndDate) -StartDate $($filterStartDate) | select-object MessageId, SenderAddress, Subject #| Select-Object -First 1
+    $AllEmailDetails = Get-MessageTraceV2 -MessageId "$($emailIdentifierInternetParsed)" -EndDate $($filterEndDate) -StartDate $($filterStartDate) | select-object MessageId, SenderAddress, Subject
 
 
     #4. Store data from both 2 and 3 step into csv
@@ -290,6 +290,7 @@ function GetReadMails {
 
 
     $counter = 1
+    $mailsNotFound = 0
     $total = $emailIdentifierInternet.count
 
     foreach ($emailIndex in 1..$($emailIdentifierInternet.count)) {
@@ -311,15 +312,16 @@ function GetReadMails {
         $newEmailIdentifier = $emailIdentifier[$($emailindex)]
         $newEmailIdentifierInmutable = $emailIdentifierInmutable[$($emailindex)]
         $newEmailIdentifierInternet = $emailIdentifierInternet[$($emailindex)]
-        $newEmailDetails = $AllEmailDetails | where-object { $_.MessageId -match $newEmailIdentifierInternet} | Select-Object -First 
+        $newEmailDetails = $AllEmailDetails | where-object { $_.MessageId -match $newEmailIdentifierInternet} | Select-Object -First 1
         $newEmailSubject = $newEmailDetails.Subject
         $newEmailSender = $newEmailDetails.SenderAddress
 
  
         if ($newEmailSubject -eq $null){
-            if ($verbose -eq $true){
+            if ($showErrors -eq $true){
                 write-host "No data subject neither sender found for $newEmailIdentifierInternet" -ForegroundColor DarkYellow
             }
+            $mailsNotFound = $mailsNotFound + 1
             $newEmailSubject = "Details not found."
             $newEmailSender = "Details not found."
         }
@@ -340,6 +342,7 @@ function GetReadMails {
     }
 
     #5. Save results
-    Write-Host 'Read mails extraction is ready. You can now inspect results on $outputCsv' -ForegroundColor DarkGreen
+    Write-Host "Read mails extraction is ready. You can now inspect results on $($outputCsv)" -ForegroundColor DarkGreen
+    Write-host "$($mailsNotFound) of $($total) mails were not found." -ForegroundColor DarkYellow
 
 }
