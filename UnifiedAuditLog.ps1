@@ -103,7 +103,7 @@ function GetAuditLogs {
 
 
 # Title
-# ExpandAuditLogsFile
+# GetExpandedAuditLogsFile
 #
 # Params
 # fileName. String. local file containing microsoft office 365's auditlogs.
@@ -116,7 +116,7 @@ function GetAuditLogs {
 # Boolean. True if audit logs were successfully retrieved. Else, false.
 # File. CSV format file including auditlogs.
 # 
-function ExpandAuditLogsFile {
+function GetExpandedAuditLogsFile {
     param(
         [Parameter(Mandatory=$true)]
         [string]$fileName
@@ -168,13 +168,13 @@ function ExpandAuditLogsFile {
     foreach ($row in $csv){
         $counter = $counter + 1
 
-        if ($counter -eq $total/4){ 
+        if ($counter -eq [int]($total/4)){ 
             write-host "25% rows expanded" -ForegroundColor DarkYellow
         }
-        if ($counter -eq $total/2){
+        if ($counter -eq [int]($total/2)){
             write-host "50% rows expanded" -ForegroundColor DarkYellow  
         }
-        if ($counter -eq ($total/4)*3){
+        if ($counter -eq [int]($total/4)*3){
             write-host "75% rows expanded" -ForegroundColor DarkYellow  
         }
         
@@ -209,7 +209,7 @@ function ExpandAuditLogsFile {
             
     }
     
-    Write-Host 'Extraction is ready. You can now inspect results on $outputPath' -ForegroundColor DarkGreen   
+    Write-Host 'Extraction is ready. You can now inspect results on $($outputPath)' -ForegroundColor DarkGreen   
 }
 
 
@@ -228,7 +228,7 @@ function ExpandAuditLogsFile {
 # Boolean. True if mail data was successfully retrieved. Else, false.
 # File. CSV format file including auditlogs.
 # 
-function GetReadMails {
+function GetReadMailsFromAuditLogsFile {
     param(
         [Parameter(Mandatory=$true)]
         [string]$fileName,
