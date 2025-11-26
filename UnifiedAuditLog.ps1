@@ -214,7 +214,7 @@ function GetExpandedAuditLogsFile {
 
 
 # Title
-# GetReadMails
+# GetReadMailsFromAuditLogsFile
 #
 # Params
 # fileName. String. csv file containing microsoft defender for office 365's auditlogs.
@@ -351,4 +351,57 @@ function GetReadMailsFromAuditLogsFile {
     Write-Host "Read mails extraction is ready. You can now inspect results on $($outputCsv)" -ForegroundColor DarkGreen
     Write-host "$($mailsNotFound) of $($total) mails were not found. You may want to use -daysBack" -ForegroundColor DarkYellow
 
+}
+
+
+# Title
+# GetAuditLogActivities
+#
+# Params
+# fileName. String. csv file containing microsoft defender for office 365's auditlogs.
+#
+# Description
+# It will read the original CSV file containing auditlogs from microsoft defender and print the activities detected and the times it were logged.
+#
+# Return
+# Boolean. True if stats were successfully calculated. Else, false.
+# 
+function GetAuditLogActivities {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$fileName
+    )
+
+    # 1. Check correct input parameter
+    $InputCsvPath = Join-Path (Get-Location) $fileName
+    if (-not (test-path $InputCsvPath)){
+        write-host "Indicated file $filename was not found. We were looking on folder $(Get-location)" -ForegroundColor DarkRed
+        return $false
+    }
+
+    # 2. Load CSV
+    $auditLogsCsv = Import-Csv -Path $InputCsvPath
+
+    # 3. Parse data to get operations
+    $operations = $auditLogsCsv | group-object -property Operations | Sort-Object -property Count -Descending
+
+    # 4. Save operations into csv
+    $stats = $operations | ForEach-Object {
+        [PSCustomObject]@{
+            OperationName = $_.Name
+            Count     = $_.Count
+        }
+    }
+    $outputCsvPath = [System.IO.Path]::ChangeExtension($InputCsvPath, "ActivitiesCount.csv")
+    $stats | Export-Csv -Path $outputCsvPath -NoTypeInformation -Force
+
+    # 5. Print stats
+    Write-Host "Activity count was completed successfuly. You can now inspect results on $($outputCsvPath)" -ForegroundColor DarkGreen
+    foreach ($activity in $stats){
+        write-host ("{0,-45}" -f "$($activity.OperationName)") -NoNewline -ForegroundColor DarkYellow
+        write-host " was detected " -NoNewline
+        write-host ("{0,-5}" -f "`t$($activity.Count) ") -NoNewline -ForegroundColor DarkYellow
+        write-host "`ttimes"
+    }
+  
 }
