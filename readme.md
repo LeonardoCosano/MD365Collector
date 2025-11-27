@@ -37,7 +37,7 @@ SetEnvironmentReadyForMD365Collector
 ### 5️⃣ Run the cmdlets
 If you haven't run the tool before, I suggest start by full automatic collection:
 ```powershell
-StartCollection -user pepito@acme.com -start 11/26/2025 -end 11/27/2025
+StartCollection -user pepito@acme.com -start 2025-11-26T00:00:00Z -end 2025-11-27T00:00:00Z
 ```
 
 > ⚠️ **Authentication required:**  
