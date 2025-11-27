@@ -35,9 +35,9 @@ SetEnvironmentReadyForMD365Collector
 ```
 
 ### 5️⃣ Run the cmdlets
-If you haven't run the tool before, i recommend start by full automatic collection:
+If you haven't run the tool before, I suggest start by full automatic collection:
 ```powershell
-StartCollection
+StartCollection -user pepito@acme.com -start 11/26/2025 -end 11/27/2025
 ```
 
 > ⚠️ **Authentication required:**  
@@ -87,8 +87,7 @@ You can also open *issues* to report bugs or suggest improvements.
 ---
 
 ## 🔒 License
-This project is licensed under the **MIT License**.  
-See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License**. 
 
 ---
 
