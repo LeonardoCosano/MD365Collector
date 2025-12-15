@@ -50,11 +50,12 @@ StartCollection -user pepito@acme.com -start 2025-11-26T00:00:00Z -end 2025-11-2
 ## 🧩 Features
 
 ### ✅ Current features
-- Collection of **Audit Logs** from Microsoft Office 365.
+- Collection of default Microsoft Office 365 **Audit Logs** based on timestamp and username. See function GetAuditLogs.
+- Generation of a custom parsed AuditLogs file which eases analysis of Microsoft Office 365 **Audit Logs**. See function GetExpandedAuditLogsFile.
+- Generation of AuditLogs statistics. See function GetAuditLogActivities.
 
 ### 🔜 Upcoming features
-- Advanced Audit Log collection.  
-- Audit Log parsing and processing.  
+- Advanced Audit Log collection.    
 - Collection of **Cloud App Activity Logs**.  
 - Parsing of Cloud App Activity logs.  
 - Generation of statistics and reports for both log types.
