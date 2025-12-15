@@ -405,3 +405,53 @@ function GetAuditLogActivities {
     }
   
 }
+
+# Title
+# GetSessionIds
+#
+# Params
+# fileName. String. csv file containing ¡¡¡our expanded version!!! of microsoft defender for office 365's auditlogs.
+#
+# Description
+# It will read the expanded csv file containing auditlogs from microsoft defender and print all identified session ids.
+#
+# Return
+# Boolean. True if stats were successfully calculated. Else, false.
+# 
+function GetSessionIds {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$fileName
+    )
+
+    #1. Check for correct inputs
+    $InputCsvPath = Join-Path (Get-Location) $fileName
+    if (-not (test-path $InputCsvPath)){
+        write-host "Indicated file $filename was not found. We were looking on folder $(Get-location)" -ForegroundColor DarkRed
+        return $false
+    }
+
+    #2. Load CSV
+    $auditLogsCsv = Import-Csv -Path $InputCsvPath 
+
+    #3. Get csv devicePropertiesJson field (it is the field containing sessionIds)
+    $deviceProperties = $auditLogsCsv | Select-Object -ExpandProperty DevicePropertiesJson | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ConvertFrom-Json
+
+    #4. Collect unique SessionIds
+    $uniqueSessionIds = @($deviceProperties) |
+      ForEach-Object { ($_ | Where-Object Name -eq 'SessionId').Value } |
+      Where-Object { $_ } |
+      Sort-Object -Unique
+
+    #5. Save at csv
+    $outputCsvPath = [System.IO.Path]::ChangeExtension($InputCsvPath, "sessionIds.csv")
+    $uniqueSessionIds |
+      Select-Object @{Name='SessionId';Expression={$_}} |
+      Export-Csv -Path $outputCsvPath -NoTypeInformation -Encoding UTF8
+
+
+    Write-Host "SessionIds were retrieved successfuly. You can now inspect results on $($outputCsvPath)" -ForegroundColor DarkGreen
+
+
+
+}
